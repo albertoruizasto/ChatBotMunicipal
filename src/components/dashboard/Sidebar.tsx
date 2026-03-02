@@ -101,16 +101,16 @@ export default function Sidebar({ collapsed, mobileOpen, onClose }: SidebarProps
           {(!collapsed || mobileOpen) ? (
             <div className="flex items-center gap-2 px-2">
               <div className="w-7 h-7 rounded-full bg-blue-700 flex items-center justify-center text-xs font-bold shrink-0">
-                {(profile?.full_name ?? 'U').charAt(0).toUpperCase()}
+                {(profile?.full_name || profile?.email || 'U').charAt(0).toUpperCase()}
               </div>
               <div className="min-w-0">
-                <p className="text-xs font-medium truncate">{profile?.full_name ?? 'Usuario'}</p>
+                <p className="text-xs font-medium truncate">{profile?.full_name || profile?.email || 'Usuario'}</p>
                 <p className="text-[10px] text-gray-400 truncate">{profile?.email}</p>
               </div>
             </div>
           ) : (
             <div className="w-7 h-7 rounded-full bg-blue-700 flex items-center justify-center text-xs font-bold">
-              {(profile?.full_name ?? 'U').charAt(0).toUpperCase()}
+              {(profile?.full_name || profile?.email || 'U').charAt(0).toUpperCase()}
             </div>
           )}
         </div>

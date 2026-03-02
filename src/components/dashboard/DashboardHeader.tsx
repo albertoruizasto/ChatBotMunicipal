@@ -156,11 +156,11 @@ export default function DashboardHeader({ onMenuClick }: DashboardHeaderProps) {
           className="flex items-center gap-2 rounded-lg px-2 py-1 hover:bg-gray-100 transition-colors"
         >
           <div className="w-8 h-8 rounded-full bg-blue-800 text-white flex items-center justify-center text-sm font-bold">
-            {(profile?.full_name ?? 'U').charAt(0).toUpperCase()}
+            {(profile?.full_name || profile?.email || 'U').charAt(0).toUpperCase()}
           </div>
           <div className="hidden sm:block text-left">
             <p className="text-xs font-semibold text-gray-800 max-w-28 truncate">
-              {profile?.full_name ?? 'Usuario'}
+              {profile?.full_name || profile?.email || 'Usuario'}
             </p>
             <p className="text-[10px] text-gray-400 capitalize">{profile?.role ?? 'citizen'}</p>
           </div>

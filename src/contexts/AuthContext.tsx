@@ -22,19 +22,45 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null)
   const [loading, setLoading] = useState(true)
 
-  // Carga el perfil del usuario desde la tabla profiles
-  const fetchProfile = useCallback(async (userId: string) => {
+  // Carga el perfil y sincroniza metadatos de OAuth (Google, etc.)
+  const fetchProfile = useCallback(async (authUser: SupabaseUser) => {
     const { data, error } = await supabase
       .from('profiles')
       .select('*')
-      .eq('id', userId)
+      .eq('id', authUser.id)
       .single()
 
-    if (!error && data) setProfile(data as Profile)
+    if (error || !data) return
+
+    const profileData = data as Profile
+
+    // Google envía el nombre en 'name' o 'full_name' dentro de user_metadata.
+    // Si el perfil quedó con full_name vacío (trigger usó la clave incorrecta),
+    // lo actualizamos ahora y lo persistimos en la tabla.
+    const meta = authUser.user_metadata ?? {}
+    const metaName: string = meta.full_name || meta.name || ''
+    const metaAvatar: string = meta.avatar_url || meta.picture || ''
+
+    if (!profileData.full_name && metaName) {
+      const updates: Partial<Profile> = { full_name: metaName }
+      if (!profileData.avatar_url && metaAvatar) updates.avatar_url = metaAvatar
+
+      const { data: updated } = await supabase
+        .from('profiles')
+        .update(updates)
+        .eq('id', authUser.id)
+        .select()
+        .single()
+
+      setProfile((updated ?? profileData) as Profile)
+      return
+    }
+
+    setProfile(profileData)
   }, [])
 
   const refreshProfile = useCallback(async () => {
-    if (user) await fetchProfile(user.id)
+    if (user) await fetchProfile(user)
   }, [user, fetchProfile])
 
   // Inicializar sesión y suscribirse a cambios
@@ -42,7 +68,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     supabase.auth.getSession().then(async ({ data: { session } }) => {
       setSession(session)
       setUser(session?.user ?? null)
-      if (session?.user) await fetchProfile(session.user.id)
+      if (session?.user) await fetchProfile(session.user)
       setLoading(false)
     })
 
@@ -51,7 +77,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setSession(session)
         setUser(session?.user ?? null)
         if (session?.user) {
-          await fetchProfile(session.user.id)
+          await fetchProfile(session.user)
         } else {
           setProfile(null)
         }

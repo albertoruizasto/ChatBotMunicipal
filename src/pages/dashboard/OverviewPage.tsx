@@ -9,7 +9,7 @@ export default function OverviewPage() {
   const { conversations, loading: convLoading } = useConversations()
 
   const role        = profile?.role ?? 'citizen'
-  const displayName = profile?.full_name ?? profile?.email ?? 'Usuario'
+  const displayName = profile?.full_name || profile?.email || 'Usuario'
   const recentConvs = conversations.slice(0, 4)
 
   const stats = [
