@@ -11,8 +11,10 @@ import type { Conversation } from '@/types'
 export default function ChatPage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const [activeConv, setActiveConv]     = useState<Conversation | null>(null)
+  const [newChatMode, setNewChatMode]   = useState(false) // chat vacío antes de crear conv
   const [showList, setShowList]         = useState(true) // mobile: alterna panel
   const messagesEndRef                  = useRef<HTMLDivElement>(null)
+  const hasAutoSelected                 = useRef(false)
 
   const {
     conversations,
@@ -37,16 +39,25 @@ export default function ChatPage() {
     bumpConversation?.(activeConv?.id)
   })
 
-  // Sincronizar con query param ?conv=<id>
+  // Sincronizar con query param ?conv=<id> y auto-seleccionar última conversación
   useEffect(() => {
+    if (conversations.length === 0) return
     const convId = searchParams.get('conv')
-    if (convId && conversations.length > 0) {
+
+    if (convId) {
       const found = conversations.find((c) => c.id === convId)
       if (found) {
         setActiveConv(found)
+        setNewChatMode(false)
         setShowList(false)
       }
+    } else if (!hasAutoSelected.current && !newChatMode) {
+      // Primera carga sin param: abrir la conversación más reciente
+      hasAutoSelected.current = true
+      setActiveConv(conversations[0])
+      setShowList(false)
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams, conversations])
 
   // Auto-scroll al último mensaje
@@ -60,16 +71,13 @@ export default function ChatPage() {
     setSearchParams({ conv: conv.id })
   }, [setSearchParams])
 
-  const handleNewConv = useCallback(async () => {
-    try {
-      const conv = await createConversation()
-      setActiveConv(conv)
-      setShowList(false)
-      setSearchParams({ conv: conv.id })
-    } catch {
-      // El error queda en convError y se muestra en la UI
-    }
-  }, [createConversation, setSearchParams])
+  const handleNewConv = useCallback(() => {
+    // Mostrar el área de chat vacía de inmediato; la conv se crea al enviar el primer mensaje
+    setActiveConv(null)
+    setNewChatMode(true)
+    setShowList(false)
+    setSearchParams({})
+  }, [setSearchParams])
 
   const handleArchive = useCallback(async (id: string) => {
     await archiveConversation(id)
@@ -80,9 +88,21 @@ export default function ChatPage() {
   }, [archiveConversation, activeConv, setSearchParams])
 
   const handleSend = useCallback(async (content: string) => {
-    if (!activeConv) return
-    await sendMessage(content)
-  }, [activeConv, sendMessage])
+    if (newChatMode && !activeConv) {
+      // Primera vez: crear conversación en Supabase y luego enviar el mensaje
+      try {
+        const conv = await createConversation()
+        setActiveConv(conv)
+        setNewChatMode(false)
+        setSearchParams({ conv: conv.id })
+        await sendMessage(content, conv.id)
+      } catch {
+        // error visible en el banner de convError
+      }
+    } else if (activeConv) {
+      await sendMessage(content)
+    }
+  }, [newChatMode, activeConv, createConversation, sendMessage, setSearchParams])
 
   // ─── Render ────────────────────────────────────────────────────────────
 
@@ -115,7 +135,7 @@ export default function ChatPage() {
         flex-1 flex flex-col bg-gray-50 min-w-0
         ${!showList ? 'flex' : 'hidden md:flex'}
       `}>
-        {activeConv ? (
+        {(activeConv || newChatMode) ? (
           <>
             {/* Header del chat activo */}
             <div className="bg-white border-b border-gray-200 px-4 h-14 flex items-center gap-3 shrink-0">
@@ -133,7 +153,7 @@ export default function ChatPage() {
               </div>
               <div className="min-w-0">
                 <p className="text-sm font-semibold text-gray-800 truncate">
-                  {activeConv.title ?? 'Asistente Municipal'}
+                  {activeConv?.title ?? 'Nueva conversación'}
                 </p>
                 <p className="text-xs text-green-500">En línea</p>
               </div>
@@ -157,7 +177,9 @@ export default function ChatPage() {
                     <div className="text-5xl mb-3">🏛️</div>
                     <p className="text-sm font-medium text-gray-600">Asistente Municipal</p>
                     <p className="text-xs text-gray-400 mt-1">
-                      Hola, soy el asistente del Municipio Digital. ¿En qué puedo ayudarte hoy?
+                      {newChatMode
+                        ? 'Escribe tu consulta y te responderé enseguida.'
+                        : 'Hola, soy el asistente del Municipio Digital. ¿En qué puedo ayudarte hoy?'}
                     </p>
                   </div>
                 </div>

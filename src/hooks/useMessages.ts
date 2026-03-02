@@ -9,7 +9,7 @@ interface UseMessagesReturn {
   sending: boolean
   isTyping: boolean
   error: string | null
-  sendMessage: (content: string) => Promise<void>
+  sendMessage: (content: string, overrideConvId?: string) => Promise<void>
   clearError: () => void
 }
 
@@ -59,15 +59,16 @@ export function useMessages(
   }, [conversationId])
 
   const sendMessage = useCallback(
-    async (content: string) => {
-      if (!user || !conversationId || !content.trim()) return
+    async (content: string, overrideConvId?: string) => {
+      const convId = overrideConvId ?? conversationId
+      if (!user || !convId || !content.trim()) return
 
       const optimisticId = `optimistic-${Date.now()}`
 
       // 1. Mensaje optimista del usuario
       const optimisticMsg: ChatMessage = {
         id: optimisticId,
-        conversation_id: conversationId,
+        conversation_id: convId,
         role: 'user',
         content: content.trim(),
         metadata: null,
@@ -82,7 +83,7 @@ export function useMessages(
         // 2. Enviar al backend y webhook
         setIsTyping(true)
         const { userMessage, assistantMessage } = await sendMessageFlow({
-          conversationId,
+          conversationId: convId,
           userId: user.id,
           content: content.trim(),
           profile: profile
