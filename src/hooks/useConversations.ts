@@ -38,10 +38,17 @@ export function useConversations(): UseConversationsReturn {
 
   const createConversation = useCallback(async (title?: string): Promise<Conversation> => {
     if (!user) throw new Error('No hay sesión activa')
-    const conv = await conversationService.create(user.id, title)
-    // Optimistic update: insertar al inicio
-    setConversations((prev) => [conv, ...prev])
-    return conv
+    setError(null)
+    try {
+      const conv = await conversationService.create(user.id, title)
+      // Optimistic update: insertar al inicio
+      setConversations((prev) => [conv, ...prev])
+      return conv
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Error al crear conversación'
+      setError(msg)
+      throw err
+    }
   }, [user])
 
   const archiveConversation = useCallback(async (id: string) => {

@@ -17,6 +17,7 @@ export default function ChatPage() {
   const {
     conversations,
     loading: convLoading,
+    error: convError,
     createConversation,
     archiveConversation,
     renameConversation,
@@ -66,7 +67,7 @@ export default function ChatPage() {
       setShowList(false)
       setSearchParams({ conv: conv.id })
     } catch {
-      // silencio — el hook lo reporta
+      // El error queda en convError y se muestra en la UI
     }
   }, [createConversation, setSearchParams])
 
@@ -92,6 +93,12 @@ export default function ChatPage() {
         w-full md:w-72 lg:w-80 shrink-0 bg-white border-r border-gray-200 flex flex-col
         ${showList ? 'flex' : 'hidden md:flex'}
       `}>
+        {convError && (
+          <div className="mx-3 mt-3 flex items-start gap-2 bg-red-50 border border-red-200 text-red-700 text-xs rounded-lg px-3 py-2">
+            <span className="shrink-0">⚠️</span>
+            <span>{convError}</span>
+          </div>
+        )}
         <ConversationList
           conversations={conversations}
           activeId={activeConv?.id ?? null}
