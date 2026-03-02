@@ -52,6 +52,7 @@ export default function DashboardHeader({ onMenuClick }: DashboardHeaderProps) {
   const [notifications, setNotifications] = useState<Notification[]>(MOCK_NOTIFICATIONS)
   const [notifOpen, setNotifOpen]         = useState(false)
   const [avatarOpen, setAvatarOpen]       = useState(false)
+  const [signingOut, setSigningOut]       = useState(false)
 
   const notifRef  = useRef<HTMLDivElement>(null)
   const avatarRef = useRef<HTMLDivElement>(null)
@@ -74,8 +75,15 @@ export default function DashboardHeader({ onMenuClick }: DashboardHeaderProps) {
   }
 
   const handleSignOut = async () => {
-    await signOut()
-    navigate('/')
+    if (signingOut) return
+    setSigningOut(true)
+    setAvatarOpen(false)
+    try {
+      await signOut()
+    } finally {
+      setSigningOut(false)
+      navigate('/')
+    }
   }
 
   return (
@@ -182,9 +190,13 @@ export default function DashboardHeader({ onMenuClick }: DashboardHeaderProps) {
             </Link>
             <button
               onClick={handleSignOut}
-              className="w-full flex items-center gap-2 px-3 py-2 text-xs text-red-600 hover:bg-red-50 transition-colors"
+              disabled={signingOut}
+              className="w-full flex items-center gap-2 px-3 py-2 text-xs text-red-600 hover:bg-red-50 transition-colors disabled:opacity-50"
             >
-              <LogoutIcon className="w-3.5 h-3.5" /> Cerrar sesión
+              {signingOut
+                ? <><SpinnerIcon className="w-3.5 h-3.5 animate-spin" /> Saliendo…</>
+                : <><LogoutIcon className="w-3.5 h-3.5" /> Cerrar sesión</>
+              }
             </button>
           </div>
         )}
@@ -248,6 +260,15 @@ function ChevronIcon({ className }: { className?: string }) {
   return (
     <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
       <polyline points="6 9 12 15 18 9" />
+    </svg>
+  )
+}
+
+function SpinnerIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" viewBox="0 0 24 24">
+      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
     </svg>
   )
 }

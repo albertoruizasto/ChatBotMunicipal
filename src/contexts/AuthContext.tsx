@@ -10,11 +10,7 @@ import type { User as SupabaseUser, Session } from '@supabase/supabase-js'
 import { supabase } from '@/lib/supabase'
 import type { AuthContextType, Profile, RegisterData } from '@/types'
 
-// ─── Context ─────────────────────────────────────────────────────────────────
-
 const AuthContext = createContext<AuthContextType | null>(null)
-
-// ─── Provider ────────────────────────────────────────────────────────────────
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser]       = useState<SupabaseUser | null>(null)
@@ -22,73 +18,86 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null)
   const [loading, setLoading] = useState(true)
 
-  // Carga el perfil y sincroniza metadatos de OAuth (Google, etc.)
+  // ─── Carga/sincroniza perfil desde Supabase ───────────────────────────────
   const fetchProfile = useCallback(async (authUser: SupabaseUser) => {
-    const { data, error } = await supabase
-      .from('profiles')
-      .select('*')
-      .eq('id', authUser.id)
-      .single()
-
-    if (error || !data) return
-
-    const profileData = data as Profile
-
-    // Google envía el nombre en 'name' o 'full_name' dentro de user_metadata.
-    // Si el perfil quedó con full_name vacío (trigger usó la clave incorrecta),
-    // lo actualizamos ahora y lo persistimos en la tabla.
-    const meta = authUser.user_metadata ?? {}
-    const metaName: string = meta.full_name || meta.name || ''
-    const metaAvatar: string = meta.avatar_url || meta.picture || ''
-
-    if (!profileData.full_name && metaName) {
-      const updates: Partial<Profile> = { full_name: metaName }
-      if (!profileData.avatar_url && metaAvatar) updates.avatar_url = metaAvatar
-
-      const { data: updated } = await supabase
+    try {
+      const { data, error } = await supabase
         .from('profiles')
-        .update(updates)
+        .select('*')
         .eq('id', authUser.id)
-        .select()
         .single()
 
-      setProfile((updated ?? profileData) as Profile)
-      return
-    }
+      if (error || !data) return
 
-    setProfile(profileData)
+      const profileData = data as Profile
+
+      // Sincronizar nombre desde metadatos de Google (envía 'name', no 'full_name')
+      const meta         = authUser.user_metadata ?? {}
+      const metaName     = (meta.full_name || meta.name || '') as string
+      const metaAvatar   = (meta.avatar_url || meta.picture || '') as string
+
+      if (!profileData.full_name && metaName) {
+        const updates: Partial<Profile> = { full_name: metaName }
+        if (!profileData.avatar_url && metaAvatar) updates.avatar_url = metaAvatar
+
+        const { data: updated } = await supabase
+          .from('profiles')
+          .update(updates)
+          .eq('id', authUser.id)
+          .select()
+          .single()
+
+        setProfile((updated ?? profileData) as Profile)
+        return
+      }
+
+      setProfile(profileData)
+    } finally {
+      // Garantiza que loading siempre se resuelve, incluso si hay error
+      setLoading(false)
+    }
   }, [])
 
   const refreshProfile = useCallback(async () => {
     if (user) await fetchProfile(user)
   }, [user, fetchProfile])
 
-  // Inicializar sesión y suscribirse a cambios
+  // ─── Paso 1: escuchar cambios de sesión (SOLO sincrónico, sin await) ───────
   useEffect(() => {
-    supabase.auth.getSession().then(async ({ data: { session } }) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       setSession(session)
       setUser(session?.user ?? null)
-      if (session?.user) await fetchProfile(session.user)
-      setLoading(false)
-    })
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (_event, session) => {
-        setSession(session)
-        setUser(session?.user ?? null)
-        if (session?.user) {
-          await fetchProfile(session.user)
-        } else {
-          setProfile(null)
-        }
+      // Al cerrar sesión, limpiar perfil y terminar loading
+      if (event === 'SIGNED_OUT' || !session) {
+        setProfile(null)
         setLoading(false)
       }
-    )
+    })
 
     return () => subscription.unsubscribe()
-  }, [fetchProfile])
+  }, [])
 
-  // ─── Operaciones de auth ────────────────────────────────────────────────
+  // ─── Paso 2: sesión inicial desde storage local ───────────────────────────
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session)
+      setUser(session?.user ?? null)
+      if (!session?.user) setLoading(false)
+    })
+  }, [])
+
+  // ─── Paso 3: cargar perfil cuando cambia el usuario ───────────────────────
+  // Usa user?.id como dep para no re-ejecutar si el objeto user cambia
+  // pero el usuario es el mismo.
+  useEffect(() => {
+    if (user) {
+      fetchProfile(user)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id])
+
+  // ─── Operaciones de auth ──────────────────────────────────────────────────
 
   const signIn = async (email: string, password: string) => {
     const { error } = await supabase.auth.signInWithPassword({ email, password })
@@ -116,8 +125,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     })
     if (signUpError) throw signUpError
 
-    // El trigger en Supabase crea el perfil base automáticamente.
-    // Actualizamos los campos adicionales que el trigger no conoce.
     if (authData.user) {
       const { error: profileError } = await supabase
         .from('profiles')
@@ -129,31 +136,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   const signOut = async () => {
-    const { error } = await supabase.auth.signOut()
-    if (error) throw error
+    // No lanzar error aunque falle — siempre limpiar estado local
+    await supabase.auth.signOut()
+    setUser(null)
+    setSession(null)
     setProfile(null)
   }
 
-  // ─── Valor del contexto ─────────────────────────────────────────────────
-
   return (
     <AuthContext.Provider value={{
-      user,
-      profile,
-      session,
-      loading,
-      signIn,
-      signInWithGoogle,
-      signUp,
-      signOut,
-      refreshProfile,
+      user, profile, session, loading,
+      signIn, signInWithGoogle, signUp, signOut, refreshProfile,
     }}>
       {children}
     </AuthContext.Provider>
   )
 }
-
-// ─── Hook ─────────────────────────────────────────────────────────────────────
 
 export function useAuth(): AuthContextType {
   const ctx = useContext(AuthContext)
